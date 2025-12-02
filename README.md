@@ -7,8 +7,12 @@ cd '/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/
 ![alt text](image.png)
 修改为这个地方的偏移
 ![alt text](image-1.png)
-还有这个位置（这个函数的最后）
+## 上个函数的最后调用的函数
 ![alt text](image-3.png)
+![alt text](image-8.png)
+不通版本这个位置偏移不同
+![alt text](image-6.png)
+![alt text](image-7.png)
 这个值设置为1101
 ![alt text](image-4.png)
 
