@@ -1,4 +1,16 @@
-# WMPFDebugger
+# WMPFDebugger-arm
+感谢大佬的开源
+https://github.com/evi0s/WMPFDebugger
+
+## 使用
+
+git clone https://github.com/chain00x/WMPFDebugger-arm
+cd WMPFDebugger-arm
+yarn
+npx ts-node src/index.ts
+
+## 不通版本偏移查找
+
 ida arm打开（时间很久 要等）
 ```
 cd '/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C'
