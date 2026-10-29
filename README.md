@@ -35,19 +35,18 @@ devtools://devtools/bundled/inspector.html?ws=127.0.0.1:62000
 **注意：单独启动 relay 不能让普通微信自动进入调试模式。** 必须有已经启用
 LanDebug 的运行时连接 9421。当前目标是微信 **4.1.15 / WeChatAppEx 7.25800
 (macOS arm64)**，native hook 配置在 `config/addresses.25800.darwin.json`。
-该版本曾在旧 Frida 17.3.2 下发生注入超时/卡死；现已锁定 17.24.3，
-通过独立 C 测试进程的三轮加载/挂钩/卸载，但实机稳定性仍须单独验证。
-因此普通的 `src/index.ts` 启动仍阻止 25800 注入，不会自动追踪新 PID。
 
-仅用于明确选择的一次实验验证（不要与独立 relay 同时占用端口）：
+直接启动（macOS 上注入需要 root；主进程 PID 自动发现，可用 `--pid` 指定）：
 ```bash
-npm run test:frida
-sudo env PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin \
-  npx ts-node src/index.ts --experimental-25800 --pid <WeChatAppEx主进程PID> --session-seconds 90
+sudo npx ts-node src/index.ts
 ```
+
 只接受真实的 WeChatAppEx 主进程，不附加 shell、WeApp/Renderer 或微信主程序。
 加载及卸载有超时；必须收到 `wmpf-ready` 才报告挂钩成功。
-`--session-seconds` 到期自动卸载退出。请勿把本地模拟测试通过视为实机 Network 验证通过。
+`--session-seconds` 可选，到期自动卸载退出。
+
+调试器连上后 Console 和 Sources 可用。此版本没有原生网络遥测，
+Network 面板只显示 webview 页面框架自身的请求，`wx.request` 不会出现在里面。
 
 ## 换新版本（无需 IDA）
 

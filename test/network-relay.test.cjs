@@ -321,40 +321,6 @@ test('a response without a URL does not invent a request', async t => {
   assert.equal(f.relay.status().nativeRequests, 0);
 });
 
-test('appservice observer maps real wx.request calls into the Network panel', async t => {
-  const f = await fixture(t); const p = await f.peer(); const a = await f.applet();
-  p.send({ id: 1, method: 'Network.enable' });
-  await until(() => p.messages.some(m => m.id === 1));
-  const bind = obj => a.emit({ method: 'Runtime.bindingCalled', params: { name: '__wmpfWxRequest', payload: JSON.stringify(obj) } });
-  bind({ phase: 'start', id: 'wx.1.abc', url: 'https://bank.example/apply', method: 'POST', headers: { 'content-type': 'application/json' }, postData: '{"a":1}', timestamp: 1700000000000 });
-  await until(() => p.messages.some(m => m.method === 'Network.requestWillBeSent'));
-  const start = p.messages.find(m => m.method === 'Network.requestWillBeSent');
-  assert.equal(start.params.request.url, 'https://bank.example/apply');
-  assert.equal(start.params.request.method, 'POST');
-  assert.equal(start.params.request.postData, '{"a":1}');
-  bind({ phase: 'done', id: 'wx.1.abc', status: 200, headers: { 'content-type': 'application/json' }, body: '{"ok":true}', timestamp: 1700000000500 });
-  await until(() => p.messages.some(m => m.method === 'Network.loadingFinished'));
-  const resp = p.messages.find(m => m.method === 'Network.responseReceived');
-  assert.equal(resp.params.response.status, 200);
-  assert.equal(resp.params.response.url, 'https://bank.example/apply');
-  p.send({ id: 2, method: 'Network.getResponseBody', params: { requestId: 'wx.1.abc' } });
-  await until(() => p.messages.some(m => m.id === 2));
-  assert.equal(p.messages.find(m => m.id === 2).result.body, '{"ok":true}');
-  assert.equal(p.messages.some(m => m.method === 'Runtime.bindingCalled'), false);
-  assert.equal(f.relay.status().nativeRequests, 1);
-});
-
-test('observer failure maps to loadingFailed and no fake status', async t => {
-  const f = await fixture(t); const p = await f.peer(); const a = await f.applet();
-  p.send({ id: 1, method: 'Network.enable' });
-  await until(() => p.messages.some(m => m.id === 1));
-  const bind = obj => a.emit({ method: 'Runtime.bindingCalled', params: { name: '__wmpfWxRequest', payload: JSON.stringify(obj) } });
-  bind({ phase: 'start', id: 'wx.2', url: 'https://bank.example/fail', method: 'GET', headers: {}, timestamp: 1700000000000 });
-  bind({ phase: 'fail', id: 'wx.2', error: 'request:fail timeout', timestamp: 1700000000900 });
-  await until(() => p.messages.some(m => m.method === 'Network.loadingFailed'));
-  assert.equal(p.messages.some(m => m.method === 'Network.responseReceived'), false);
-});
-
 test('native filter tap accepts only original dropped Network frames and preserves session/payload', async t => {
   const f = await fixture(t);
   assert.equal(f.relay.ingestNativeFilteredFrame(JSON.stringify(request())), false, 'no active native session');

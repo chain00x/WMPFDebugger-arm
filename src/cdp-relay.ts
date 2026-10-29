@@ -3,72 +3,15 @@ import { createServer } from 'node:http';
 const codex = require('./third-party/RemoteDebugCodex.js');
 const proto = require('./third-party/WARemoteDebugProtobuf.js').mmbizwxadevremote.WARemoteDebug_DebugMessage;
 
-type Source = ({ transport: 'cdp'; jscontextId: string } | { transport: 'custom' } | { transport: 'dom'; webviewId: number } | { transport: 'observed' }) & { sessionId?: string };
+type Source = ({ transport: 'cdp'; jscontextId: string } | { transport: 'custom' } | { transport: 'dom'; webviewId: number }) & { sessionId?: string };
 type Pending = { source: Source; resolve: (value: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout };
 type Peer = { ws: WebSocket; diagnostic: boolean; networks: Set<string>; runtimes: Set<string>; replayed: Set<string> };
 type RequestInfo = { source: Source; postData?: string; url?: string };
-type Options = { debugPort: number; cdpPort: number; timeoutMs?: number; historyLimit?: number; observeWxRequest?: boolean; log?: (s: string) => void };
+type Options = { debugPort: number; cdpPort: number; timeoutMs?: number; historyLimit?: number; log?: (s: string) => void };
 
 // This is exclusively a native debug-protocol adapter. It does not configure
 // HTTP proxies, issue business requests, evaluate instrumentation, patch wx APIs,
 // poll JS contexts, synthesize network traffic or install certificates.
-// Injected into the appservice context on explicit request. Wraps wx.request
-// once, calls the original unchanged, and reports the real values through the
-// Runtime binding. It never fabricates a request and never changes headers/URLs.
-const WX_OBSERVER_SOURCE = `(function () {
-  try {
-    var g = typeof globalThis !== 'undefined' ? globalThis : window;
-    if (g.__wmpfWxObserverInstalled) return 'installed';
-    if (typeof wx !== 'object' || !wx || typeof wx.request !== 'function') return 'no-wx';
-    var orig = wx.request;
-    var seq = 0;
-    var finished = {};
-    var text = function (v) {
-      try { if (v === undefined) return undefined; return typeof v === 'string' ? v : JSON.stringify(v); } catch (e) { return undefined; }
-    };
-    var report = function (payload) {
-      try {
-        var fn = g.__wmpfWxRequest;
-        if (typeof fn === 'function') fn(JSON.stringify(payload));
-      } catch (e) {}
-    };
-    var finish = function (id, res) {
-      if (finished[id]) return;
-      finished[id] = true;
-      var err = res && (res.errMsg || '');
-      if (res && typeof res.statusCode === 'number' && res.statusCode > 0) {
-        var body = text(res.data);
-        if (body !== undefined && body.length > 2097152) body = body.slice(0, 2097152);
-        report({ phase: 'done', id: id, status: res.statusCode, headers: res.header || {}, body: body, timestamp: Date.now() });
-      } else if (err && /fail/i.test(err)) {
-        report({ phase: 'fail', id: id, error: err, timestamp: Date.now() });
-      } else {
-        report({ phase: 'done', id: id, status: 0, headers: (res && res.header) || {}, body: text(res && res.data), timestamp: Date.now() });
-      }
-    };
-    var wrapped = function (options) {
-      if (!options || typeof options !== 'object') return orig.apply(wx, arguments);
-      var id = 'wx.' + (++seq) + '.' + Date.now().toString(36);
-      var headers = options.header && typeof options.header === 'object' ? options.header : {};
-      report({
-        phase: 'start', id: id, url: String(options.url || ''),
-        method: String(options.method || 'GET').toUpperCase(), headers: headers,
-        postData: text(options.data), timestamp: Date.now()
-      });
-      var copy = {};
-      for (var k in options) copy[k] = options[k];
-      copy.success = function (res) { try { finish(id, res); } catch (e) {} return typeof options.success === 'function' ? options.success.apply(this, arguments) : undefined; };
-      copy.fail = function (res) { try { finish(id, res); } catch (e) {} return typeof options.fail === 'function' ? options.fail.apply(this, arguments) : undefined; };
-      copy.complete = function (res) { try { finish(id, res); } catch (e) {} return typeof options.complete === 'function' ? options.complete.apply(this, arguments) : undefined; };
-      return orig.call(wx, copy);
-    };
-    try { wx.request = wrapped; } catch (e) {
-      try { Object.defineProperty(wx, 'request', { value: wrapped, configurable: true, writable: true }); } catch (e2) { return 'assign-failed'; }
-    }
-    g.__wmpfWxObserverInstalled = true;
-    return 'installed';
-  } catch (e) { return 'error:' + e.message; }
-})()`;
 
 export class CdpRelay {
     readonly debug: WebSocketServer;
@@ -96,9 +39,6 @@ export class CdpRelay {
     private targets = new Map<string, any>();
     private autoAttached = 0;
     private closed = false;
-    private observedBodies = new Map<string, string>();
-    private wxObserverRequested = false;
-    private wxObserverInstalled = new Set<string>();
     private log: (s: string) => void;
     private timeout: number;
 
@@ -177,7 +117,6 @@ export class CdpRelay {
         this.history = []; this.historyBytes = 0;
         this.nativeRequests = 0; this.bodyResponses = 0; this.forwarded = 0;
         this.backendNetworkRequested.clear(); this.targets.clear(); this.autoAttached = 0; this.lastError = '';
-        this.observedBodies.clear(); this.wxObserverInstalled.clear();
     }
 
     private attachApplet(ws: WebSocket) {
@@ -307,7 +246,6 @@ export class CdpRelay {
             const ctx = message.params?.context;
             if (typeof ctx?.id === 'number') {
                 this.contexts.set(key(ctx.id), { context: ctx, sessionId: sessionId || undefined });
-                if (!sessionId) void this.maybeInstallWxObserver();
             }
         } else if (message.method === 'Runtime.executionContextDestroyed') {
             this.contexts.delete(key(message.params?.executionContextId));
@@ -331,10 +269,6 @@ export class CdpRelay {
                 for (const peer of this.peers) { peer.networks.delete(detached); peer.runtimes.delete(detached); }
                 for (const [k, v] of this.contexts) if (v.sessionId === detached) this.contexts.delete(k);
             }
-        }
-        if (message.method === 'Runtime.bindingCalled' && message.params?.name === '__wmpfWxRequest') {
-            this.wxObserverEvent(String(message.params.payload || ''));
-            return;
         }
         if (sessionId) this.enableBackendNetwork(sessionId); // every observed child session gets Network domain
         if (message.method.startsWith('Network.')) this.network(message, source);
@@ -388,79 +322,6 @@ export class CdpRelay {
         this.log(`[network] native ${source.transport} request id=${requestId}`);
     }
 
-    // WMPF 25800 exposes no native network telemetry. When the frontend asks
-    // for Network, install an observer inside the appservice context instead:
-    // wx.request is wrapped once, the original call and its callbacks are
-    // forwarded unchanged, and only the actual url/method/status/body are
-    // reported back through a Runtime binding. No request is synthesized.
-    private async maybeInstallWxObserver() {
-        if (!this.options.observeWxRequest || !this.applet || this.applet.readyState !== WebSocket.OPEN) return;
-        const gen = this.generation;
-        try {
-            await this.command('Runtime.addBinding', { name: '__wmpfWxRequest' }, { transport: 'cdp', jscontextId: '' });
-            for (const value of this.contexts.values()) {
-                if (value.sessionId) continue;
-                const ctxId = value.context?.id;
-                if (typeof ctxId !== 'number') continue;
-                const key = String(ctxId);
-                if (this.wxObserverInstalled.has(key)) continue;
-                this.wxObserverInstalled.add(key);
-                const probe = await this.command('Runtime.evaluate', { expression: 'typeof wx', contextId: ctxId, returnByValue: true }, { transport: 'cdp', jscontextId: '' });
-                if (gen !== this.generation) return;
-                if (probe?.result?.value !== 'object') continue;
-                const result = await this.command('Runtime.evaluate', { expression: WX_OBSERVER_SOURCE, contextId: ctxId, returnByValue: true }, { transport: 'cdp', jscontextId: '' });
-                this.log(`[wx-observer] context ${ctxId}: ${result?.result?.value ?? 'no result'}`);
-            }
-        } catch (e) {
-            if (gen === this.generation) this.lastError = `wx observer: ${(e as Error).message}`;
-        }
-    }
-
-    private wxObserverEvent(payload: string) {
-        let p: any;
-        try { p = JSON.parse(payload); } catch { this.malformed++; return; }
-        if (!p || typeof p.id !== 'string' || !p.id) { this.malformed++; return; }
-        const source: Source = { transport: 'observed' };
-        const mapKey = `\u0000${p.id}`;
-        if (p.phase === 'start') {
-            if (typeof p.url !== 'string' || !p.url) { this.counts.wxRequestWithoutUrl = (this.counts.wxRequestWithoutUrl || 0) + 1; return; }
-            const headers = p.headers && typeof p.headers === 'object' ? p.headers : {};
-            this.requests.set(mapKey, { source, url: p.url, postData: typeof p.postData === 'string' ? p.postData : undefined });
-            if (this.requests.size > 1000) this.requests.delete(this.requests.keys().next().value!);
-            this.receiveCdp({
-                method: 'Network.requestWillBeSent',
-                params: {
-                    requestId: p.id, loaderId: '', documentURL: '',
-                    request: { url: p.url, method: typeof p.method === 'string' && p.method ? p.method : 'GET', headers,
-                        ...(typeof p.postData === 'string' ? { postData: p.postData } : {}) },
-                    timestamp: (Number(p.timestamp) || Date.now()) / 1000, wallTime: Date.now() / 1000,
-                    initiator: { type: 'other' }, type: 'XHR',
-                },
-            }, source);
-        } else if (p.phase === 'done') {
-            const url = this.requests.get(mapKey)?.url || '';
-            const body = typeof p.body === 'string' ? p.body : '';
-            if (body.length <= 2 * 1024 * 1024) {
-                this.observedBodies.set(p.id, body);
-                while (this.observedBodies.size > 300) this.observedBodies.delete(this.observedBodies.keys().next().value!);
-            }
-            const ts = (Number(p.timestamp) || Date.now()) / 1000;
-            this.receiveCdp({
-                method: 'Network.responseReceived',
-                params: {
-                    requestId: p.id, loaderId: '', timestamp: ts, type: 'XHR',
-                    response: { url, status: Number(p.status) || 0, statusText: '', headers: p.headers && typeof p.headers === 'object' ? p.headers : {}, mimeType: '', connectionId: p.id },
-                },
-            }, source);
-            this.receiveCdp({ method: 'Network.loadingFinished', params: { requestId: p.id, timestamp: ts, encodedDataLength: body.length } }, source);
-        } else if (p.phase === 'fail') {
-            this.receiveCdp({
-                method: 'Network.loadingFailed',
-                params: { requestId: p.id, timestamp: (Number(p.timestamp) || Date.now()) / 1000, type: 'XHR', errorText: typeof p.error === 'string' ? p.error : 'request failed', canceled: false },
-            }, source);
-        } else this.malformed++;
-    }
-
     private network(event: any, source: Source) {
         const p = event.params;
         if (!p || typeof p !== 'object') { this.malformed++; return; }
@@ -507,13 +368,6 @@ export class CdpRelay {
     private async responseBody(requestId: string, sessionId = '') {
         const info = this.requests.get(`${sessionId}\u0000${requestId}`);
         let body: any;
-        if (info?.source.transport === 'observed') {
-            // The observer captured data only when the app's own callback ran.
-            const body = this.observedBodies.get(String(requestId));
-            if (body === undefined) throw new Error('Observed request body unavailable (callback not yet returned or body too large)');
-            this.bodyResponses++;
-            return { body, base64Encoded: false };
-        }
         if (info?.source.transport === 'custom') {
             // Observed in the installed official IDE's onRemoteDebugDevtoolsMessage:
             // prefix 1=request, 2=download, 3=upload, 4=socket. No JS evaluation.
@@ -592,7 +446,6 @@ export class CdpRelay {
                     this.log(`[network] replayed ${replayed} native events AFTER Network.enable session=${sessionId || 'root'}`);
                 }
                 if (!peer.diagnostic) this.enableBackendNetwork(sessionId);
-                if (this.options.observeWxRequest) void this.maybeInstallWxObserver();
                 return;
             }
             if (method === 'Network.disable') { peer.networks.delete(sessionId); reply({}); return; }

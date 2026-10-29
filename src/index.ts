@@ -118,7 +118,7 @@ const ensurePortsAvailable = (): void => {
 // Keep Frida process management below unchanged.
 let relay: ReturnType<typeof createRelay> | null = null;
 const debug_server = () => {
-    relay = createRelay({ debugPort: DEBUG_PORT, cdpPort: CDP_PORT, observeWxRequest: argv.includes('--observe-wx-request') });
+    relay = createRelay({ debugPort: DEBUG_PORT, cdpPort: CDP_PORT });
     console.log(`[server] debug server: ws://127.0.0.1:${DEBUG_PORT}`);
     console.log(`[server] CDP server: ws://127.0.0.1:${CDP_PORT}; status: http://127.0.0.1:${CDP_PORT}/status`);
     return relay.debug;
@@ -333,12 +333,6 @@ const shutdown = async (exitCode = 0) => {
 
 const main = async () => {
     try {
-        // Static offsets + mock protocol tests do not establish live stability.
-        // A real 25800 session hung during injection. Block ordinary startup
-        // until explicitly opted into further experimental investigation.
-        if (getInstalledWMPFVersion() === 25800 && !argv.includes("--experimental-25800")) {
-            throw new Error("WMPF 25800 live injection is suspended after a WeChat hang. No server or hook was started. --experimental-25800 is for explicit experimental testing only.");
-        }
         const lease = getArgValue('--session-seconds');
         if (lease && (!/^[1-9][0-9]*$/.test(lease) || Number(lease) > 3600)) throw new Error('--session-seconds requires 1..3600');
         ensurePortsAvailable();

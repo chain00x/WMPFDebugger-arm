@@ -19,5 +19,5 @@ npm run test:frida
 
 `connected=false` 表示没有已启用 LanDebug 的微信运行时连接 9421。
 单独启动适配器不能让普通微信自动进入调试模式。
-25800 曾发生实机注入卡死，注入路径仍为单 PID、显式实验开关；
+25800 注入需要 root：`sudo npx ts-node src/index.ts`，只附加单个主进程 PID；
 参见 [README.md](../README.md) 与 [原生协议说明](../docs/native-protocol.md)。

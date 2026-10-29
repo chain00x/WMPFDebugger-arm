@@ -38,7 +38,8 @@ The absence is scoped to these sessions and targets; it does not prove WMPF
 ## Native hook safety changes
 
 - No pgrep -f / shell attachment, no helper/renderer attachment, no spawn retry.
-- Exactly one verified main executable PID; explicit experimental-25800 gate.
+- Exactly one verified main executable PID; start via `sudo npx ts-node src/index.ts`.
+- Network panel shows only webview frame traffic; no wx.request observer is installed.
 - Actual load success and hook readiness required; load/cleanup have deadlines.
 - Native branch/memory anchors checked before hook installation.
 - Verified OnLoadStart entry 0x577760C (x0=this, x1=bool), not a relocated cbz.

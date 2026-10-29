@@ -231,7 +231,7 @@ tailGate(24668) scene 1256→1101 → factory → miniapp 连 9421 → CDP 连 6
 > 新协议模块在本地 mock/protobuf/WebSocket 回归中通过，但尚未获得实机成功证据；
 > 再次注入时出现 `script.load Timeout` 且用户反馈微信卡死。已停止调试进程、
 > 结束被注入 WMPF 宿主；主微信未被强退、未清缓存/聊天数据。
-> **25800 普通启动已阻止；自动附加和逻辑层网络桥均改为显式选择加入。暂停实机测试。**
+> **25800 现可直接 `sudo npx ts-node src/index.ts` 启动；不安装 wx.request 观察器，Network 面板只有 webview 框架流量。**
 
 当前目标版本：`WeChat.app 4.1.15` → `WeChatAppEx 7.25800`。
 配置：`config/addresses.25800.darwin.json`（`src/index.ts` 按已安装 plist 自动选版本）。
