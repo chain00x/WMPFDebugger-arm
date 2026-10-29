@@ -4,8 +4,15 @@
   "main": "src/index.ts",
   "license": "GPL-2.0-only",
   "author": "evi0s",
+  "scripts": {
+    "test": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"CommonJS\"}' node -r ts-node/register --test test/*.test.cjs",
+    "typecheck": "tsc --noEmit",
+    "relay": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/relay.ts",
+    "test:frida": "node scripts/check-frida.mjs",
+    "test:ui": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"CommonJS\"}' node -r ts-node/register scripts/check-network-ui.mjs"
+  },
   "dependencies": {
-    "frida": "17.3.2",
+    "frida": "17.24.3",
     "protobufjs": "^7.5.4",
     "ws": "^8.18.3"
   },

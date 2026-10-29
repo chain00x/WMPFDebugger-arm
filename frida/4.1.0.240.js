@@ -1,9 +1,25 @@
+// macOS26: frida Module 枚举会装 dyld interposition 引发后续 dlopen 崩溃，
+// 改用 _dyld_* 原生函数直接读镜像表；子进程可能未加载框架 → 空保护退出
 const getMainModule = () => {
-    return Process.findModuleByName("WeChatAppEx Framework");
+    try {
+        const cnt = new NativeFunction(Module.getGlobalExportByName('_dyld_image_count'), 'ulong', [])
+        const getName = new NativeFunction(Module.getGlobalExportByName('_dyld_get_image_name'), 'pointer', ['ulong'])
+        const getHdr = new NativeFunction(Module.getGlobalExportByName('_dyld_get_image_header'), 'pointer', ['ulong'])
+        const n = cnt()
+        for (let i = 0; i < n; i++) {
+            const namePtr = getName(i)
+            if (namePtr.isNull()) continue
+            const name = namePtr.readCString()
+            if (name && name.indexOf('WeChatAppEx Framework') !== -1) return { base: getHdr(i) }
+        }
+    } catch (e) {}
+    return null
 }
 
-// Get the module base
-const moduleBase = getMainModule().base;
+const mainModule = getMainModule()
+if (!mainModule) { console.log('[frida-4.1.0.240] framework not loaded yet, script exits (child ok)'); }
+else {
+const moduleBase = mainModule.base;
 
 
 //搜索SendToClientFilter
@@ -91,3 +107,4 @@ Interceptor.attach(moduleBase.add(0x4F0555C), {
         retval.replace(0x0);
     }
 });
+}

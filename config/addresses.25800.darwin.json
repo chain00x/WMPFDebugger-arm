@@ -1,0 +1,39 @@
+{
+  "Version": 25800,
+  "Arch": {
+    "arm64": {
+      "LoadStartHookOffset": "0x577787C",
+      "LoadStartHookOffset2": "0x9359258",
+      "ResourceCachePolicyHookOffset": "0x57DCC9C",
+      "StructOffset": 1520,
+      "SceneOffset": 456,
+      "DisableCDPFilter": true,
+      "EntryHookOffset": "0x577760C",
+      "ExpectedEntryBytes": "ff0306d1f65715a9f44f16a9fd7b17a9fdc30591f40301aaf30300aa",
+      "EnableFactoryHook": false,
+      "EnableResourceCacheHook": true,
+      "ExpectedResourceBytes": "ffc301d1fa6702a9f85f03a9f65704a9f44f05a9fd7b06a9fd830191",
+      "NativeFilterTaps": [],
+      "OnAfterCreatedOffset": "0x57771B8",
+      "ExpectedAfterCreatedBytes": "ffc306d1fc6f17a9f65718a9f44f19a9fd7b1aa9fd830691f30300aa",
+      "EnableEarlyActivation": false,
+      "IdentityProbeHooks": [
+        {
+          "Name": "InvokeHandlerAsync",
+          "Offset": "0x57753ec",
+          "ExpectedBytes": "ff0306d1f65715a9f44f16a9fd7b17a9fdc30591f30301aaf50300aa"
+        },
+        {
+          "Name": "InvokeHandlerSync",
+          "Offset": "0x5775260",
+          "ExpectedBytes": "ff0306d1f65715a9f44f16a9fd7b17a9fdc30591f30301aaf50300aa"
+        },
+        {
+          "Name": "GetWXConfig",
+          "Offset": "0x5771ef4",
+          "ExpectedBytes": "f85fbca9f65701a9f44f02a9fd7b03a9fdc30091ff4307d1f40300aa"
+        }
+      ]
+    }
+  }
+}
